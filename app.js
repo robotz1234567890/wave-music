@@ -2,24 +2,24 @@
 const $ = s => document.querySelector(s);
 const redirectUri = location.origin + location.pathname;
 const scopes = "user-read-private user-read-email";
-let clientId = localStorage.getItem("wave_spotify_client_id") || "";
+const clientId = "5535336bb91a4ee49f5ee929cb8a887c";
 const statusEl = $("#status"), resultsEl = $("#results");
 function b64url(bytes){return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
 async function digest(s){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(s))}
 async function connect(){
  if(!clientId){clientId=prompt("Paste your Spotify Client ID (not Client Secret):")?.trim()||"";if(!clientId)return;localStorage.setItem("wave_spotify_client_id",clientId)}
- const verifier=b64url(crypto.getRandomValues(new Uint8Array(64))),challenge=b64url(await digest(verifier));sessionStorage.setItem("wave_verifier",verifier);
- const p=new URLSearchParams({client_id:clientId,response_type:"code",redirect_uri:redirectUri,code_challenge_method:"S256",code_challenge:challenge,scope:scopes});
+ const verifier=b64url(crypto.getRandomValues(new Uint8Array(64))),challenge=b64url(await digest(verifier));const state=b64url(crypto.getRandomValues(new Uint8Array(24)));sessionStorage.setItem("wave_verifier",verifier);sessionStorage.setItem("wave_state",state);
+ const p=new URLSearchParams({client_id:clientId,response_type:"code",redirect_uri:redirectUri,code_challenge_method:"S256",code_challenge:challenge,state,scope:scopes});
  location.href="https://accounts.spotify.com/authorize?"+p.toString();
 }
 async function finishLogin(){
- const params=new URLSearchParams(location.search),code=params.get("code");if(!code)return;
+ const params=new URLSearchParams(location.search),code=params.get("code");if(!code)return;const state=params.get("state");if(!state||state!==sessionStorage.getItem("wave_state"))throw Error("Spotify login state check failed. Please connect again.");
  if(!clientId)throw Error("Client ID missing. Click Connect Spotify again.");
  const verifier=sessionStorage.getItem("wave_verifier");if(!verifier)throw Error("Login session expired. Please connect again.");
  const body=new URLSearchParams({client_id:clientId,grant_type:"authorization_code",code,redirect_uri:redirectUri,code_verifier:verifier});
  const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});
  const data=await r.json();if(!r.ok)throw Error(data.error_description||"Spotify sign-in failed.");
- sessionStorage.setItem("wave_access_token",data.access_token);if(data.refresh_token)sessionStorage.setItem("wave_refresh_token",data.refresh_token);
+ sessionStorage.removeItem("wave_state");sessionStorage.setItem("wave_access_token",data.access_token);if(data.refresh_token)sessionStorage.setItem("wave_refresh_token",data.refresh_token);
  history.replaceState({},"",redirectUri);statusEl.textContent="Connected to Spotify. Search for a track or artist.";$("#connect").textContent="Spotify connected ✓";
 }
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
